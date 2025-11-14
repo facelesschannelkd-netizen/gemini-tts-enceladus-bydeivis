@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gemini TTS – Enceladus</title>
+  <style>
+    body {
+      background: #111;
+      color: #f5f5f5;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 22px;
+      margin-bottom: 10px;
+    }
+    label {
+      font-weight: bold;
+      margin-top: 12px;
+      display: block;
+    }
+    input, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      background: #1b1b1b;
+      color: #f5f5f5;
+    }
+    textarea {
+      min-height: 160px;
+      resize: vertical;
+    }
+    button {
+      margin-top: 16px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 4px;
+      font-size: 15px;
+      cursor: pointer;
+      background: #4caf50;
+      color: #fff;
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    #status {
+      margin-top: 10px;
+      font-size: 14px;
+      min-height: 18px;
+    }
+    audio {
+      margin-top: 15px;
+      width: 100%;
+    }
+    small {
+      color: #bbb;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Gemini TTS – Voz Enceladus</h1>
+  <small>
+    Use uma API key do Gemini com permissões limitadas. Ela fica só no seu navegador.
+  </small>
+
+  <label for="apiKey">API Key do Gemini:</label>
+  <input type="password" id="apiKey" placeholder="Cole aqui sua API key..." />
+
+  <label for="texto">Texto para narrar:</label>
+  <textarea id="texto" placeholder="Digite ou cole o texto que a voz Enceladus deve falar."></textarea>
+
+  <button id="btnGerar" onclick="gerarAudio()">Gerar áudio</button>
+
+  <div id="status"></div>
+
+  <audio id="player" controls style="display:none;"></audio>
+
+  <script>
+    async function gerarAudio() {
+      const apiKey = document.getElementById("apiKey").value.trim();
+      const texto = document.getElementById("texto").value.trim();
+      const statusEl = document.getElementById("status");
+      const btn = document.getElementById("btnGerar");
+      const player = document.getElementById("player");
+
+      if (!apiKey) {
+        alert("Cole sua API key primeiro.");
+        return;
+      }
+      if (!texto) {
+        alert("Digite algum texto para narrar.");
+        return;
+      }
+
+      statusEl.textContent = "Gerando áudio...";
+      btn.disabled = true;
+
+      try {
+        const body = {
+          model: "models/gemini-2.5-pro-preview-tts",
+          contents: [
+            {
+              parts: [
+                { text: texto }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: "Enceladus"
+                }
+              }
+            }
+          }
+        };
+
+        const resp = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-tts:generateContent?key=" + encodeURIComponent(apiKey),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          }
+        );
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error("Erro HTTP " + resp.status + ": " + text);
+        }
+
+        const result = await resp.json();
+
+        const part = result?.candidates?.[0]?.content?.parts?.[0];
+        const inline = part?.inlineData || part?.inline_data; // versões diferentes
+
+        if (!inline || !inline.data) {
+          throw new Error("Resposta sem áudio.");
+        }
+
+        const mimeType = inline.mimeType || "audio/wav";
+        const base64Data = inline.data;
+
+        const blob = base64ToBlob(base64Data, mimeType);
+        const url = URL.createObjectURL(blob);
+
+        player.src = url;
+        player.style.display = "block";
+        player.play().catch(() => {});
+        statusEl.textContent = "Áudio gerado com sucesso!";
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "gemini_enceladus." + guessExtension(mimeType);
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Erro ao gerar áudio: " + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function base64ToBlob(base64, mimeType) {
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return new Blob([bytes], { type: mimeType });
+    }
+
+    function guessExtension(mime) {
+      if (!mime) return "wav";
+      if (mime.includes("mpeg")) return "mp3";
+      if (mime.includes("wav")) return "wav";
+      if (mime.includes("ogg")) return "ogg";
+      return "wav";
+    }
+  </script>
+
+</body>
+</html>
